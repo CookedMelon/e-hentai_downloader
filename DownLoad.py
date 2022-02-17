@@ -1,3 +1,4 @@
+from tempfile import tempdir
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -8,6 +9,7 @@ import bs4
 import re
 import time
 from threading import Thread
+import threading
 import math
 import copy
 import requests
@@ -43,9 +45,10 @@ def get_proxy_():
 def askURL(url):
     global proxy
     global headers
-    response = requests.get(url, proxies=proxy, headers=headers)
-    html = ""
+
     try:
+        response = requests.get(url, proxies=proxy, headers=headers)
+        html = ""
         response.encoding = 'utf-8'
         html = repr(response.text)
     except:
@@ -77,6 +80,41 @@ def getOne(Links, index, name):
         src = getSrc(html)
         print('src = '+src)
         TurnPic(src, index, name)
+
+
+def newTurnPic(url, index, name):
+    global proxy
+    global headers
+    try:
+        response = requests.get(url, proxies=proxy, headers=headers)
+        pic = response.content
+        with open('.\\'+name+'.jpg', 'wb') as f:
+            f.write(pic)
+    except:
+        return 'wrong'
+
+
+def newgetPart(task, begin):
+    print('begin', begin)
+    Links = task['links']
+    name = task['name']
+    wrong = []
+    i = 0
+    # print(len(Links))
+    for link in Links[begin::20]:
+        # print(begin, i)
+        html = askURL(link)
+        if html == "":
+            wrong.append(begin+1+20*i)
+
+        else:
+            src = getSrc(html)
+            newTurnPic(src, begin+1+20*i, name+'\\'+'Pic'+str(begin+1+20*i))
+        task['wrong'] = wrong
+
+        task['finished'] += 1
+        # print(begin, task['finished'])
+        i += 1
 
 
 def getPart(Links, name, begin):
@@ -145,6 +183,7 @@ def getSum(html):
 
 
 def getName(html):
+    global findName
     soup = bs4.BeautifulSoup(html, "html.parser")
     for item in soup.find_all('div', id="gd2"):
         item = str(item)
@@ -160,35 +199,44 @@ def reDownload(Links):
         getOne(Links, index, name)
 
 
-def downloadAll(baseurl, Name):
+def getImgLinks(baseurl, task, Name=''):
     global Sum
+    Links = task['links']
     get_proxy_()
     print("正在读取作品第1页及相关信息...")
     html = askURL(baseurl+'?p=0')
     while html == "":
-        print("读取失败，开始重新读取")
+        # print("读取失败，开始重新读取")
         askURL(baseurl+'?p=0')
-    print("读取成功！")
+    # print("读取成功！")
     Sum = getSum(html)
     Pages = int(math.ceil(Sum/40))
+    if Name == '':
+        Name = getName()
+        Name = validateTitle(Name)
+
     print("作品名:"+Name)
-    print("共"+str(Sum)+"张")
-    print("共"+str(Pages)+"页")
+    # print("共"+str(Sum)+"张")
+    # print("共"+str(Pages)+"页")
     try:
         os.makedirs(Name)
-        print("创建文件夹成功!")
+        # print("创建文件夹成功!")
     except:
         pass
 
-    Links = getLinks(html)
+    templinks = getLinks(html)
     for i in range(Pages-1):
-        print("开始读取第"+str(i+2)+"页")
+        # print("开始读取第"+str(i+2)+"页")
         html = askURL(baseurl+'?p='+str(i+1))
         while html == "":
-            print("读取失败，开始重新读取")
+            # print("读取失败，开始重新读取")
             askURL(baseurl+'?p='+str(i+1))
-        Links = Links+getLinks(html)
-    beginCatch(Links, Name)
+        templinks = templinks+getLinks(html)
+    for link in templinks:
+        Links.append(link)
+    task['state'] = 'prepared'
+    print("pr")
+    # beginCatch(Links, Name)
 
 
 def beginCatch(Links, Name):

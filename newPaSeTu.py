@@ -1,4 +1,5 @@
 from tkinter import *
+import tkinter as tk
 import time
 import requests
 import io
@@ -36,6 +37,59 @@ def get_proxy_():
 get_proxy_()
 
 
+def ask5URL(url):
+    html = ''
+    i = 0
+    while i < 5 and html == '':
+        i += 1
+        html = GH.askURL(url)
+    return html
+
+
+class StoppableDownloadThread(threading.Thread):
+    """Thread class with a stop() method. The thread itself has to check
+    regularly for the stopped() condition."""
+
+    def __init__(self,  *args, **kwargs):
+        super(StoppableDownloadThread, self).__init__(*args, **kwargs)
+        self.args = kwargs['args']
+        # print(self.task, self.begin)
+        self._stop_event = threading.Event()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def stopped(self):
+        return self._stop_event.is_set()
+
+    def run(self):
+        task = self.args['task']
+        begin = self.args['begin']
+        Links = task['links']
+        name = task['name']
+        wrong = []
+        i = 0
+        for link in Links[begin::20]:
+            if self.stopped():
+                wrong.append(begin+1+20*i)
+            else:
+                html = ask5URL(link)
+                if html == '':
+                    print("请求失败，链接：", link)
+                if html == "":
+                    wrong.append(begin+1+20*i)
+                else:
+                    src = DL.getSrc(html)
+                    message = DL.newTurnPic(src, begin+1+20*i, name +
+                                            '\\'+'Pic'+str(begin+1+20*i))
+                    if message == 'wrong':
+                        wrong.append(begin+1+20*i)
+                task['wrong'] = wrong
+                task['finished'] += 1
+                # print(begin, task['finished'])
+            i += 1
+
+
 class MY_GUI():
     imgs = []
 
@@ -56,8 +110,8 @@ class MY_GUI():
 
     def __init__(self, init_window_name):
         user32 = ctypes.windll.user32
-        self.totalwidth = user32.GetSystemMetrics(0)
-        self.totalheight = user32.GetSystemMetrics(1)
+        self.totalwidth = user32.GetSystemMetrics(0)//5*4
+        self.totalheight = user32.GetSystemMetrics(1)//5*4
         self.init_window_name = init_window_name
         self.nowpage = 0
         self.homewidth = (self.totalwidth*3)//4
@@ -67,27 +121,63 @@ class MY_GUI():
         self.tempPicWidth = self.totalwidth//6
         self.tempPicHeight = self.totalwidth//4
         self.nowloc = 0
+        self.nowlabelnum = 0
         self.beginindex = 0
         self.step = 20
         self.allLabels = [{} for i in range(self.step)]
         # mode负责当前筛选条件，starleast为最少星数，type为允许的种类,page1为张数上限,page2为张数下限
-        self.mode = {'starleast': 0, 'type': ['Doujinshi', 'Manga', 'Artist CG',
+        self.mode = {'starleast': 4, 'type': ['Doujinshi', 'Manga', 'Artist CG',
                                               'Game CG', 'Western', 'Non-H', 'Image Set',
                                               'Cosplay', 'Asian Porn', 'Misc'],
-                     'page1': -1, 'page2': -1}
+                     'page1': 0, 'page2': 10000}
         #  存放删选后的作品
         self.worksList = []
         #  存放所有作品
         self.allworks = []
+        self.is_catching_more = False
+        self.break_get_more = False
 
     def set_init_windows(self):
         self.init_window_name.title("e站爬取")
-
+        self.init_window_name.bind("<Button-1>", self.callback)
         self.init_window_name.geometry(
             str(self.totalwidth)+'x'+str(self.totalheight)+'+0+0')
         self.home_data_label = Label(
             self.init_window_name, text="首页")
         self.home_data_label.grid(row=1, column=0)
+        self.star_label = Label(
+            self.init_window_name, text="最低星数:")
+        self.star_label.grid(row=1, column=1)
+        self.star_entry_var = StringVar()
+        # 注意，输入框就是单行文本，它是没有height属性的
+        self.star_entry = Entry(self.init_window_name, width=5,
+                                textvariable=self.star_entry_var)
+        self.star_entry.bind('<Return>', self.refresh_star)
+        self.star_entry.grid(row=1, column=2)
+        self.star_entry_var.set(str(self.mode['starleast']))
+
+        self.page1_label = Label(
+            self.init_window_name, text="最少页数:")
+        self.page1_label.grid(row=1, column=3)
+        self.page1_entry_var = StringVar()
+        # 注意，输入框就是单行文本，它是没有height属性的
+        self.page1_entry = Entry(self.init_window_name, width=5,
+                                 textvariable=self.page1_entry_var)
+        self.page1_entry.bind('<Return>', self.refresh_page1)
+        self.page1_entry.grid(row=1, column=4)
+        self.page1_entry_var.set(str(self.mode['page1']))
+
+        self.page2_label = Label(
+            self.init_window_name, text="最多页数:")
+        self.page2_label.grid(row=1, column=5)
+        self.page2_entry_var = StringVar()
+        # 注意，输入框就是单行文本，它是没有height属性的
+        self.page2_entry = Entry(self.init_window_name, width=5,
+                                 textvariable=self.page2_entry_var)
+        self.page2_entry.bind('<Return>', self.refresh_page2)
+        self.page2_entry.grid(row=1, column=6)
+        self.page2_entry_var.set(str(self.mode['page2']))
+
         self.home_data_frame = Frame(
             self.init_window_name, bg="white")
         self.home_data_frame.place(
@@ -149,10 +239,14 @@ class MY_GUI():
         #     threads[i].join()
         self.push_step_works()
         self.refresh_data()
+        self.refresh_downwork()
 
-    def push_step_works(self):
-        for i in range(min(self.step, len(self.worksList)-self.beginindex)):
+    def push_step_works(self, begin=0):
+        print("gong", min(self.step, len(self.worksList)-self.beginindex))
+        for i in range(begin, min(self.step, len(self.worksList)-self.beginindex)):
+            self.nowlabelnum = i
             self.pushwork(i)
+            self.nowlabelnum = i+1
 
     def lastPage(self):
         def fun(event):
@@ -161,7 +255,7 @@ class MY_GUI():
                 self.beginindex -= self.step
                 self.home_data_frame.destroy()
                 self.home_data_frame = Frame(
-                    self.init_window_name, bg="red")
+                    self.init_window_name, bg="white")
                 self.home_data_frame.place(
                     x=0, y=20, width=self.homewidth, height=self.homeheight)
                 self.push_step_works()
@@ -177,7 +271,7 @@ class MY_GUI():
                 self.beginindex += self.step
                 self.home_data_frame.destroy()
                 self.home_data_frame = Frame(
-                    self.init_window_name, bg="red")
+                    self.init_window_name, bg="white")
                 self.home_data_frame.place(
                     x=0, y=20, width=self.homewidth, height=self.homeheight)
                 # print(2)
@@ -185,36 +279,44 @@ class MY_GUI():
                 self.updateWhere()
         return fun
 
-    def larger(self, imgsrc):
-        image_bytes = requests.get(
-            imgsrc, proxies=proxy, headers=headers).content
-        # 将数据存放到data_stream中
-        data_stream = io.BytesIO(image_bytes)
-        # 转换为图片格式
-        pil_image = Image.open(data_stream)
-        w = pil_image.size[0]
-        h = pil_image.size[1]
-        k = h/w
-        if self.tempPicHeight > k*self.tempPicWidth:
-            w = self.tempPicWidth
-            h = int(k*w)
-        else:
-            h = self.tempPicHeight
-            w = int(h/k)
-        pil_image = pil_image.resize((w, h))
-        self.tempimg = ImageTk.PhotoImage(pil_image)
-        self.tempPic.configure(image=self.tempimg)
-
     def get_big(self, imgsrc):
+        def larger():
+            try:
+                image_bytes = requests.get(
+                    imgsrc, proxies=proxy, headers=headers).content
+                # 将数据存放到data_stream中
+                data_stream = io.BytesIO(image_bytes)
+                # 转换为图片格式
+                pil_image = Image.open(data_stream)
+                w = pil_image.size[0]
+                h = pil_image.size[1]
+                k = h/w
+                if self.tempPicHeight > k*self.tempPicWidth:
+                    w = self.tempPicWidth
+                    h = int(k*w)
+                else:
+                    h = self.tempPicHeight
+                    w = int(h/k)
+                pil_image = pil_image.resize((w, h))
+                self.tempimg = ImageTk.PhotoImage(pil_image)
+                self.tempPic.configure(image=self.tempimg)
+            except:
+                print("访问过快")
+
         def run_larger(event):
-            t = Thread(target=self.larger, args=(imgsrc,))
-            t.start()
+            self.tempPicThread = Thread(target=larger)
+            self.tempPicThread.start()
         return run_larger
 
     def get_more(self):
+        self.break_get_more = False
         for i in range(9):
+            time.sleep(3)
+            if self.break_get_more == True:
+                break
             url = 'https://e-hentai.org/?page='+str(i+1)
             self.addallworks(url)
+        self.is_catching_more = False
 
     def getworkslist(self):
         self.nowloc -= 1
@@ -225,11 +327,14 @@ class MY_GUI():
             work = self.allworks[self.nowloc]
             work['pic'] = ''
             self.worksList.append(work)
-        self.init_window_name.after(5000, self.getworkslist)
+        if self.is_catching_more == True and self.break_get_more == False:
+            self.init_window_name.after(5000, self.getworkslist)
 
     def addallworks(self, url):
-        html = GH.askURL(url)
-
+        self.is_catching_more = True
+        html = ask5URL(url)
+        if html == '':
+            print("请求失败，链接：", url)
         soup = bs4.BeautifulSoup(html, "html.parser")
         for item in soup.find_all('table', class_="itg gltc"):
             workslist = []
@@ -266,7 +371,7 @@ class MY_GUI():
                 for Star in item1.find_all('div', class_='ir'):
                     try:
                         S = re.findall("\d+", Star.attrs['style'])[: 2]
-                        star = 5-int(S[0])/16+(int(S[1])-1)/40
+                        star = 5-int(S[0])/16-(int(S[1])-1)/40
                         work['star'] = star
                     except:
                         work['star'] = 0.0
@@ -305,7 +410,8 @@ class MY_GUI():
             pil_image = pil_image.resize((w, h))
             self.worksList[index]['pic'] = ImageTk.PhotoImage(pil_image)
         except:
-            print('频繁访问', self.worksList[index]['imgsrc'])
+            pass
+            # print('频繁访问', self.worksList[index]['imgsrc'])
 
     def click_button(self, box):
         def inbox(event):
@@ -317,6 +423,28 @@ class MY_GUI():
             os.system("start explorer "+pathname)
         return inbox
 
+    def ThreadsManage(self):
+        # while 1:
+        # print("inmanage")
+        for task in self.tasklist:
+            # print(task['name'], task['state'])
+            # print(task['state'])
+            if task['state'] == 'running':
+                # print(task['name'], "running", task['finished'])
+                if(task['finished'] == len(task['links'])):
+                    task['state'] = 'done'
+                break
+            if task['state'] == 'prepared':
+                # print(task['name'], 'prepared')
+                task['state'] = 'running'
+                task['threads'] = [StoppableDownloadThread(
+                    args={'task': task, 'begin': i}) for i in range(20)]
+                for ths in task['threads']:
+                    ths.start()
+                break
+
+        # time.sleep(1)
+
     def outer_push_tesk(self, link, name):
         name = DL.validateTitle(name)
 
@@ -326,11 +454,11 @@ class MY_GUI():
             #     labal.grid(row=i, column=0)
 
             task = {}
-            task['link'] = link
+            task['mainlink'] = link
             task['name'] = name
-            print("name=", name)
-            task['isrun'] = False
-            task['imgsrcs'] = []
+            task['state'] = 'blank'
+            task['links'] = []
+            task['finished'] = 0
 
             self.downlist_data_box.insert(END, name)
             # TaskLabel.place(x=0, y=len(self.tasklist)*taskheight,
@@ -340,9 +468,10 @@ class MY_GUI():
             #                 width=namewidth, height=nameheight)
             self.tasklist.append(task)
             task['threadname'] = Thread(
-                target=DL.downloadAll, args=(link, name))
+                target=DL.getImgLinks, args=(link, task, name))
             task['threadname'].start()
-            task['isrun'] = True
+            task['state'] = 'wait'
+
         return pushtask
 
     def pushwork(self, index):
@@ -361,7 +490,7 @@ class MY_GUI():
         downheight = workheight
         downwidth = workwidth-imgwidth-typewidth-starwidth-pagewidth-namewidth
         work = self.worksList[index+self.beginindex]
-        frame = Frame(self.home_data_frame, relief=GROOVE)
+        frame = Frame(self.home_data_frame, relief=GROOVE, border=3)
         if index % 2 == 1:
             frame.place(x=self.homewidth//2, y=workheight * (index//2),
                         width=workwidth, height=workheight)
@@ -383,33 +512,34 @@ class MY_GUI():
         Typeframe = Label(frame)
         Typeframe.place(x=imgwidth, y=0,
                         width=typewidth, height=typeheight)
-        t1 = Label(Typeframe, text="type", border=2)
+        t1 = Label(Typeframe, text="type", border=2, relief=GROOVE)
         t1.place(x=0, y=0, width=typewidth, height=typeheight//2)
-        t2 = Label(Typeframe, text=work['type'], border=2)
+        t2 = Label(Typeframe, text=work['type'], border=2, relief=GROOVE)
         t2.place(x=0, y=typeheight//2,
                  width=typewidth, height=typeheight//2)
         Starframe = Label(frame)
         Starframe.place(x=imgwidth+typewidth, y=0,
                         width=starwidth, height=starheight)
-        s1 = Label(Starframe, text="Score", border=2)
+        s1 = Label(Starframe, text="Score", border=2, relief=GROOVE)
         s1.place(x=0, y=0, width=starwidth, height=starheight//2)
-        s2 = Label(Starframe, text=work['star'], border=2)
+        s2 = Label(Starframe, text=work['star'], border=2, relief=GROOVE)
         s2.place(x=0, y=starheight//2,
                  width=starwidth, height=starheight//2)
         Pageframe = Label(frame)
         Pageframe.place(x=imgwidth+typewidth+starwidth, y=0,
                         width=pagewidth, height=pageheight)
-        p1 = Label(Pageframe, text="page", border=2)
+        p1 = Label(Pageframe, text="page", border=2, relief=GROOVE)
         p1.place(x=0, y=0, width=pagewidth, height=pageheight//2)
-        p2 = Label(Pageframe, text=work['page'], border=2)
+        p2 = Label(Pageframe, text=work['page'], border=2, relief=GROOVE)
         p2.place(x=0, y=pageheight//2,
                  width=pagewidth, height=pageheight//2)
         Nameframe = Label(frame)
         Nameframe.place(x=imgwidth+typewidth+starwidth+pagewidth, y=0,
                         width=namewidth, height=nameheight)
-        n1 = Label(Nameframe, text="Name", border=2)
+        n1 = Label(Nameframe, text="Name", border=2, relief=GROOVE)
         n1.place(x=0, y=0, width=namewidth, height=nameheight//2)
-        n2 = Label(Nameframe, text=work['name'], border=2)
+        n2 = Label(Nameframe, text=work['name'],
+                   border=2, relief=GROOVE, anchor='w')
         n2.place(x=0, y=nameheight//2,
                  width=namewidth, height=nameheight//2)
         DownloadButtom = Button(frame, text='Download')
@@ -417,14 +547,14 @@ class MY_GUI():
             "<Button-1>", self.outer_push_tesk(work['link'], work['name']))
         DownloadButtom.place(x=imgwidth+typewidth+starwidth+pagewidth+namewidth, y=0,
                              width=downwidth, height=downheight)
-        frame.bind("<Button-1>", callback)
+        frame.bind("<Button-1>", self.callback)
 
     def findnext(self):
         while self.nowloc+1 < len(self.allworks):
             self.nowloc += 1
             work = self.allworks[self.nowloc]
             if work['star'] >= self.mode[
-                    'starleast'] and work['type'] in self.mode['type'] and (work['page'] <= self.mode['page1'] or self.mode['page1'] == -1) and work['page'] >= self.mode['page2']:
+                    'starleast'] and work['type'] in self.mode['type'] and work['page'] >= self.mode['page1'] and work['page'] <= self.mode['page2']:
                 return
         self.nowloc = len(self.allworks)
 
@@ -435,12 +565,101 @@ class MY_GUI():
                     image=self.worksList[L['index']]['pic'])
             except:
                 pass
-        # print("refrash")
+        print(self.nowlabelnum, len(self.worksList)-self.beginindex)
+        if self.nowlabelnum < len(self.worksList)-self.beginindex:
+            self.push_step_works(self.nowlabelnum)
         self.init_window_name.after(1000, self.refresh_data)
+
+    def refresh_downwork(self):
+        self.ThreadsManage()
+        self.init_window_name.after(1000, self.refresh_downwork)
+
+    def refresh_star(self, event):
+        star = self.mode['starleast']
+        try:
+            star = float(self.star_entry_var.get())
+        except:
+            pass
+        print(star)
+        if star < 0:
+            star = 0
+        if star > 5:
+            star = 5
+        star = int(star*2)/2
+        if self.mode['starleast'] != star:
+            self.mode['starleast'] = star
+            self.worksList = []
+            self.home_data_frame.destroy()
+            self.home_data_frame = Frame(
+                self.init_window_name, bg="white")
+            self.home_data_frame.place(
+                x=0, y=20, width=self.homewidth, height=self.homeheight)
+            self.getworkslist()
+            self.beginindex = 0
+            self.nowloc = 0
+            self.nowlabelnum = 0
+            self.push_step_works()
+            self.updateWhere()
+            self.star_entry_var.set(str(star))
+
+    def refresh_page1(self, event):
+        page1 = self.mode['page1']
+        try:
+            page1 = int(self.page1_entry_var.get())
+        except:
+            pass
+        print(page1)
+        if page1 < 0:
+            page1 = 0
+        if self.mode['page1'] != page1:
+            self.mode['page1'] = page1
+            self.worksList = []
+            self.home_data_frame.destroy()
+            self.home_data_frame = Frame(
+                self.init_window_name, bg="white")
+            self.home_data_frame.place(
+                x=0, y=20, width=self.homewidth, height=self.homeheight)
+            self.getworkslist()
+            self.beginindex = 0
+            self.nowloc = 0
+            self.nowlabelnum = 0
+            self.push_step_works()
+            self.updateWhere()
+            self.page1_entry_var.set(str(page1))
+
+    def refresh_page2(self, event):
+        page2 = self.mode['page2']
+        try:
+            page2 = int(self.page2_entry_var.get())
+        except:
+            pass
+        print(page2)
+        if page2 < 0:
+            page2 = 10000
+        if self.mode['page2'] != page2:
+            self.mode['page2'] = page2
+            self.worksList = []
+            self.home_data_frame.destroy()
+            self.home_data_frame = Frame(
+                self.init_window_name, bg="white")
+            self.home_data_frame.place(
+                x=0, y=20, width=self.homewidth, height=self.homeheight)
+            self.getworkslist()
+            self.beginindex = 0
+            self.nowloc = 0
+            self.nowlabelnum = 0
+            self.push_step_works()
+            self.updateWhere()
+            self.page2_entry_var.set(str(page2))
 
     def updateWhere(self):
         self.where_label.configure(
             text=str(self.beginindex+1)+"-"+str(self.beginindex+self.step))
+
+    def callback(self, event):
+        for work in self.worksList:
+            print(work['page'], end=' ')
+        print()
 
 
 def callback(event):

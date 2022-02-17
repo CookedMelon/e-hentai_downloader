@@ -16,14 +16,8 @@ import numpy as np
 from tkinter import *
 # 获取代理
 
-proxy = {}
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0"
-}
-
 
 def get_proxy_():
-    global proxy
     proxies = urllib.request.getproxies()  # 获取代理
     if len(proxies) != 0:
         proxy = {
@@ -40,13 +34,15 @@ def askURL(url):
     # headers = {
     #     "User-Agent": random.choice(my_headers)
     # }
-    global proxy
-    global headers
-    get_proxy_()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0"
+    }
 
     html = ""
     try:
-        response = requests.get(url, proxies=proxy, headers=headers)
+        proxies = get_proxy_()
+        print(proxies)
+        response = requests.get(url, proxies=proxies, headers=headers)
         response.encoding = 'utf-8'
         html = repr(response.text)
     except:
