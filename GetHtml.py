@@ -41,7 +41,7 @@ def askURL(url):
     html = ""
     try:
         proxies = get_proxy_()
-        print(proxies)
+        # print(proxies)
         response = requests.get(url, proxies=proxies, headers=headers)
         response.encoding = 'utf-8'
         html = repr(response.text)

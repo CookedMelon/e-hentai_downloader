@@ -38,6 +38,7 @@ get_proxy_()
 
 
 def ask5URL(url):
+    print(url)
     html = ''
     i = 0
     while i < 5 and html == '':
@@ -47,9 +48,6 @@ def ask5URL(url):
 
 
 class StoppableDownloadThread(threading.Thread):
-    """Thread class with a stop() method. The thread itself has to check
-    regularly for the stopped() condition."""
-
     def __init__(self,  *args, **kwargs):
         super(StoppableDownloadThread, self).__init__(*args, **kwargs)
         self.args = kwargs['args']
@@ -90,6 +88,96 @@ class StoppableDownloadThread(threading.Thread):
             i += 1
 
 
+class StoppableGetallThread(threading.Thread):
+    def __init__(self,  *args, **kwargs):
+        super(StoppableGetallThread, self).__init__(*args, **kwargs)
+        self.args = kwargs['args']
+        # print(self.task, self.begin)
+        self._stop_event = threading.Event()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def stopped(self):
+        return self._stop_event.is_set()
+
+    def run(self):
+        print("开始")
+        searched = self.args['str']
+        root = self.args['root']
+        for i in range(10):
+            workslist = []
+            if self.stopped():
+                break
+            else:
+                baseurl = 'https://e-hentai.org/?page='+str(i)
+                if searched != '':
+                    baseurl += '&f_search='+searched
+
+                html = ask5URL(baseurl)
+                if html == '':
+                    print("请求失败，链接：", baseurl)
+                soup = bs4.BeautifulSoup(html, "html.parser")
+                for item in soup.find_all('table', class_="itg gltc"):
+                    for item1 in item.find_all('tr')[1:]:
+                        work = {}
+                        for Type in item1.find_all('div', class_='cn ct2'):
+                            work['type'] = 'Doujinshi'
+                        for Type in item1.find_all('div', class_='cn ct3'):
+                            work['type'] = 'Manga'
+                        for Type in item1.find_all('div', class_='cn ct4'):
+                            work['type'] = 'Artist CG'
+                        for Type in item1.find_all('div', class_='cn ct5'):
+                            work['type'] = 'Game CG'
+                        for Type in item1.find_all('div', class_='cn cta'):
+                            work['type'] = 'Western'
+                        for Type in item1.find_all('div', class_='cn ct9'):
+                            work['type'] = 'Non-H'
+                        for Type in item1.find_all('div', class_='cn ct6'):
+                            work['type'] = 'Image Set'
+                        for Type in item1.find_all('div', class_='cn ct7'):
+                            work['type'] = 'Cosplay'
+                        for Type in item1.find_all('div', class_='cn ct8'):
+                            work['type'] = 'Asian Porn'
+                        for Type in item1.find_all('div', class_='cn ct1'):
+                            work['type'] = 'Misc'
+                        for Name in item1.find_all('div', class_='glink'):
+                            work['name'] = Name.string
+                        for Page in item1.find_all('td', class_='gl4c glhide'):
+                            try:
+                                p = Page.find_all('div')
+                                work['page'] = int(p[1].string.split(' ')[0])
+                            except:
+                                pass
+                        for Star in item1.find_all('div', class_='ir'):
+                            try:
+                                S = re.findall("\d+", Star.attrs['style'])[: 2]
+                                star = 5-int(S[0])/16-(int(S[1])-1)/40
+                                work['star'] = star
+                            except:
+                                work['star'] = 0.0
+                        for Link in item1.find_all('td', class_='gl3c glname'):
+                            if Link.find('a').attrs.__contains__('href'):
+                                link = Link.find('a').attrs['href']
+                                work['link'] = link
+                        for Imgsrc in item1.find_all('div', class_='glthumb'):
+                            for img in Imgsrc.find_all('img'):
+                                if img.attrs. __contains__('data-src'):
+                                    work['imgsrc'] = img.attrs['data-src']
+                                elif img.attrs. __contains__('src'):
+                                    work['imgsrc'] = img.attrs['src']
+                                if work != {}:
+                                    workslist.append(work)
+            if self.stopped() or len(workslist) == 0:
+                break
+            else:
+                root.allworks += workslist
+                # print(root.allworks)
+            time.sleep(3)
+        self.stop()
+        print("结束")
+
+
 class MY_GUI():
     imgs = []
 
@@ -97,12 +185,6 @@ class MY_GUI():
     worksList = []
     tasklist = []
 
-    # worksList = [{'name': 'Crooked Lines [Seiren] - english', 'star': 1, 'page': 50, 'type': 'Doujinshi', 'imgsrc': 'https://ehgt.org/t/4c/d0/4cd0bffe94dbb1249659db038a4fd36cff8cc7e1-5170770-2827-4021-jpg_250.jpg'},
-    #              {'name': 'Crooked Lines [Seiren] - english', 'star': 2, 'page': 50, 'type': 'Manga',
-    #                  'imgsrc': 'https://ehgt.org/t/9a/af/9aafe764039cf510e98306deca7a3c4afc41a64b-1466495-1254-1771-jpg_250.jpg'},
-    #              {'name': 'Crooked Lines [Seiren] - english', 'star': 3, 'page': 50, 'type': 'Manga',
-    #                  'imgsrc': 'https://ehgt.org/t/9a/af/9aafe764039cf510e98306deca7a3c4afc41a64b-1466495-1254-1771-jpg_250.jpg'},
-    #              {'name': 'Crooked Lines [Seiren] - english', 'star': 4, 'page': 50, 'type': 'Manga', 'imgsrc': 'https://ehgt.org/t/9a/af/9aafe764039cf510e98306deca7a3c4afc41a64b-1466495-1254-1771-jpg_250.jpg'}, ]
     nowloc = 0
     beginindex = 0
     step = 20
@@ -134,8 +216,8 @@ class MY_GUI():
         self.worksList = []
         #  存放所有作品
         self.allworks = []
-        self.is_catching_more = False
-        self.break_get_more = False
+        # self.is_catching_more = False
+        # self.break_get_more = False
 
     def set_init_windows(self):
         self.init_window_name.title("e站爬取")
@@ -177,6 +259,16 @@ class MY_GUI():
         self.page2_entry.bind('<Return>', self.refresh_page2)
         self.page2_entry.grid(row=1, column=6)
         self.page2_entry_var.set(str(self.mode['page2']))
+
+        self.search_label = Label(
+            self.init_window_name, text="搜索框:")
+        self.search_label.grid(row=1, column=7)
+        self.search_entry_var = StringVar()
+        # 注意，输入框就是单行文本，它是没有height属性的
+        self.search_entry = Entry(self.init_window_name, width=20,
+                                  textvariable=self.search_entry_var)
+        self.search_entry.bind('<Return>', self.beginsearch)
+        self.search_entry.grid(row=1, column=8)
 
         self.home_data_frame = Frame(
             self.init_window_name, bg="white")
@@ -223,9 +315,11 @@ class MY_GUI():
         # self.switch_pages =
 
         # self.home_data_label.grid(row=2, column=0)
-        self.addallworks('https://e-hentai.org/')
-        hideThread = Thread(target=self.get_more)
-        hideThread.start()
+
+        self.searchthread = StoppableGetallThread(
+            args={'str': '', 'root': self})
+        self.searchthread.start()
+
         print("数量：", len(self.allworks))
         self.getworkslist()
         print("数量2：", len(self.worksList))
@@ -242,7 +336,7 @@ class MY_GUI():
         self.refresh_downwork()
 
     def push_step_works(self, begin=0):
-        print("gong", min(self.step, len(self.worksList)-self.beginindex))
+        # print("gong", min(self.step, len(self.worksList)-self.beginindex))
         for i in range(begin, min(self.step, len(self.worksList)-self.beginindex)):
             self.nowlabelnum = i
             self.pushwork(i)
@@ -308,15 +402,15 @@ class MY_GUI():
             self.tempPicThread.start()
         return run_larger
 
-    def get_more(self):
-        self.break_get_more = False
-        for i in range(9):
-            time.sleep(3)
-            if self.break_get_more == True:
-                break
-            url = 'https://e-hentai.org/?page='+str(i+1)
-            self.addallworks(url)
-        self.is_catching_more = False
+    # def get_more(self):
+    #     self.break_get_more = False
+    #     for i in range(9):
+    #         time.sleep(3)
+    #         if self.break_get_more == True:
+    #             break
+    #         url = 'https://e-hentai.org/?page='+str(i+1)
+    #         self.addallworks(url)
+    #     self.is_catching_more = False
 
     def getworkslist(self):
         self.nowloc -= 1
@@ -327,67 +421,87 @@ class MY_GUI():
             work = self.allworks[self.nowloc]
             work['pic'] = ''
             self.worksList.append(work)
-        if self.is_catching_more == True and self.break_get_more == False:
-            self.init_window_name.after(5000, self.getworkslist)
+        if self.searchthread.stopped() == False:
+            self.init_window_name.after(3000, self.getworkslist)
 
-    def addallworks(self, url):
-        self.is_catching_more = True
-        html = ask5URL(url)
-        if html == '':
-            print("请求失败，链接：", url)
-        soup = bs4.BeautifulSoup(html, "html.parser")
-        for item in soup.find_all('table', class_="itg gltc"):
-            workslist = []
-            for item1 in item.find_all('tr')[1:]:
-                work = {}
-                for Type in item1.find_all('div', class_='cn ct2'):
-                    work['type'] = 'Doujinshi'
-                for Type in item1.find_all('div', class_='cn ct3'):
-                    work['type'] = 'Manga'
-                for Type in item1.find_all('div', class_='cn ct4'):
-                    work['type'] = 'Artist CG'
-                for Type in item1.find_all('div', class_='cn ct5'):
-                    work['type'] = 'Game CG'
-                for Type in item1.find_all('div', class_='cn cta'):
-                    work['type'] = 'Western'
-                for Type in item1.find_all('div', class_='cn ct9'):
-                    work['type'] = 'Non-H'
-                for Type in item1.find_all('div', class_='cn ct6'):
-                    work['type'] = 'Image Set'
-                for Type in item1.find_all('div', class_='cn ct7'):
-                    work['type'] = 'Cosplay'
-                for Type in item1.find_all('div', class_='cn ct8'):
-                    work['type'] = 'Asian Porn'
-                for Type in item1.find_all('div', class_='cn ct1'):
-                    work['type'] = 'Misc'
-                for Name in item1.find_all('div', class_='glink'):
-                    work['name'] = Name.string
-                for Page in item1.find_all('td', class_='gl4c glhide'):
-                    try:
-                        p = Page.find_all('div')
-                        work['page'] = int(p[1].string.split(' ')[0])
-                    except:
-                        pass
-                for Star in item1.find_all('div', class_='ir'):
-                    try:
-                        S = re.findall("\d+", Star.attrs['style'])[: 2]
-                        star = 5-int(S[0])/16-(int(S[1])-1)/40
-                        work['star'] = star
-                    except:
-                        work['star'] = 0.0
-                for Link in item1.find_all('td', class_='gl3c glname'):
-                    if Link.find('a').attrs.__contains__('href'):
-                        link = Link.find('a').attrs['href']
-                        work['link'] = link
-                for Imgsrc in item1.find_all('div', class_='glthumb'):
-                    for img in Imgsrc.find_all('img'):
-                        if img.attrs. __contains__('data-src'):
-                            work['imgsrc'] = img.attrs['data-src']
-                        elif img.attrs. __contains__('src'):
-                            work['imgsrc'] = img.attrs['src']
-                        if work != {}:
-                            workslist.append(work)
-            self.allworks += workslist
+    def beginsearch(self, event):
+        self.search_entry_var = self.search_entry.get()
+        self.worksList = []
+        self.allworks = []
+        self.home_data_frame.destroy()
+        self.home_data_frame = Frame(
+            self.init_window_name, bg="white")
+        self.home_data_frame.place(
+            x=0, y=20, width=self.homewidth, height=self.homeheight)
+        self.getworkslist()
+        self.beginindex = 0
+        self.nowloc = 0
+        self.nowlabelnum = 0
+        self.searchthread.stop()
+        self.searchthread = StoppableGetallThread(
+            args={'str': self.search_entry.get(), 'root': self})
+        self.searchthread.start()
+        # self.addallworks(url)
+        pass
+
+    # def addallworks(self, url):
+    #     self.is_catching_more = True
+    #     html = ask5URL(url)
+    #     if html == '':
+    #         print("请求失败，链接：", url)
+    #     soup = bs4.BeautifulSoup(html, "html.parser")
+    #     for item in soup.find_all('table', class_="itg gltc"):
+    #         workslist = []
+    #         for item1 in item.find_all('tr')[1:]:
+    #             work = {}
+    #             for Type in item1.find_all('div', class_='cn ct2'):
+    #                 work['type'] = 'Doujinshi'
+    #             for Type in item1.find_all('div', class_='cn ct3'):
+    #                 work['type'] = 'Manga'
+    #             for Type in item1.find_all('div', class_='cn ct4'):
+    #                 work['type'] = 'Artist CG'
+    #             for Type in item1.find_all('div', class_='cn ct5'):
+    #                 work['type'] = 'Game CG'
+    #             for Type in item1.find_all('div', class_='cn cta'):
+    #                 work['type'] = 'Western'
+    #             for Type in item1.find_all('div', class_='cn ct9'):
+    #                 work['type'] = 'Non-H'
+    #             for Type in item1.find_all('div', class_='cn ct6'):
+    #                 work['type'] = 'Image Set'
+    #             for Type in item1.find_all('div', class_='cn ct7'):
+    #                 work['type'] = 'Cosplay'
+    #             for Type in item1.find_all('div', class_='cn ct8'):
+    #                 work['type'] = 'Asian Porn'
+    #             for Type in item1.find_all('div', class_='cn ct1'):
+    #                 work['type'] = 'Misc'
+    #             for Name in item1.find_all('div', class_='glink'):
+    #                 work['name'] = Name.string
+    #             for Page in item1.find_all('td', class_='gl4c glhide'):
+    #                 try:
+    #                     p = Page.find_all('div')
+    #                     work['page'] = int(p[1].string.split(' ')[0])
+    #                 except:
+    #                     pass
+    #             for Star in item1.find_all('div', class_='ir'):
+    #                 try:
+    #                     S = re.findall("\d+", Star.attrs['style'])[: 2]
+    #                     star = 5-int(S[0])/16-(int(S[1])-1)/40
+    #                     work['star'] = star
+    #                 except:
+    #                     work['star'] = 0.0
+    #             for Link in item1.find_all('td', class_='gl3c glname'):
+    #                 if Link.find('a').attrs.__contains__('href'):
+    #                     link = Link.find('a').attrs['href']
+    #                     work['link'] = link
+    #             for Imgsrc in item1.find_all('div', class_='glthumb'):
+    #                 for img in Imgsrc.find_all('img'):
+    #                     if img.attrs. __contains__('data-src'):
+    #                         work['imgsrc'] = img.attrs['data-src']
+    #                     elif img.attrs. __contains__('src'):
+    #                         work['imgsrc'] = img.attrs['src']
+    #                     if work != {}:
+    #                         workslist.append(work)
+    #         self.allworks += workslist
 
     def getpic(self,  imgheight, imgwidth, index, label):
         # print('in')
@@ -565,7 +679,7 @@ class MY_GUI():
                     image=self.worksList[L['index']]['pic'])
             except:
                 pass
-        print(self.nowlabelnum, len(self.worksList)-self.beginindex)
+        # print("refresh", self.nowlabelnum, len(self.worksList)-self.beginindex)
         if self.nowlabelnum < len(self.worksList)-self.beginindex:
             self.push_step_works(self.nowlabelnum)
         self.init_window_name.after(1000, self.refresh_data)
