@@ -192,12 +192,14 @@ class MY_GUI():
 
     def __init__(self, init_window_name):
         user32 = ctypes.windll.user32
-        self.totalwidth = user32.GetSystemMetrics(0)//5*4
-        self.totalheight = user32.GetSystemMetrics(1)//5*4
+        self.totalwidth = user32.GetSystemMetrics(0)
+        self.totalheight = user32.GetSystemMetrics(1)
         self.init_window_name = init_window_name
         self.nowpage = 0
         self.homewidth = (self.totalwidth*3)//4
         self.homeheight = (self.totalheight*3)//4
+        self.directdownloadwidth = self.totalwidth//6
+        self.directdownloadheight = 20
         self.downlistwidth = self.totalwidth//6
         self.downlistheight = self.totalwidth//4
         self.tempPicWidth = self.totalwidth//6
@@ -288,13 +290,24 @@ class MY_GUI():
         self.next_label.bind('<Button-1>', self.nextPage())
         self.next_label.place(x=self.homewidth//2+25,
                               y=self.homeheight+20, width=50, height=30)
+        self.direct_download_Label = Label(self.init_window_name, text="下载链接")
+        self.direct_download_Label.place(x=self.homewidth+50, y=0)
+        self.direct_download_var = StringVar()
+        # 注意，输入框就是单行文本，它是没有height属性的
+        self.direct_download_entry = Entry(self.init_window_name,
+                                           textvariable=self.direct_download_var)
+        self.direct_download_entry.bind('<Return>', self.directdownload)
+        self.direct_download_entry.place(
+            x=self.homewidth+50, y=20, width=self.directdownloadwidth)
+
         self.downlist_data_Label = Label(self.init_window_name, text="下载列表")
-        self.downlist_data_Label.place(x=self.homewidth+50, y=0)
+        self.downlist_data_Label.place(x=self.homewidth+50, y=40)
         self.downlist_data_box = Listbox(self.init_window_name)
         self.downlist_data_box.bind(
             "<Button-1>", self.click_button(self.downlist_data_box))
         self.downlist_data_box.place(
-            x=self.homewidth+50, y=20, width=self.downlistwidth, height=self.downlistheight)
+            x=self.homewidth+50, y=60, width=self.downlistwidth, height=self.downlistheight)
+
         # for i in range(2):
         #     labal = Label(self.downlist_data_frame, text="123", bg='green')
         #     labal.grid(row=i, column=0)
@@ -306,11 +319,11 @@ class MY_GUI():
         self.downlist_data_box.config(yscrollcommand=vbar.set)  # 设置
         self.tempPic_label = Label(
             self.init_window_name, text="预览图")
-        self.tempPic_label.place(x=self.homewidth+50, y=20+self.downlistheight)
+        self.tempPic_label.place(x=self.homewidth+50, y=60+self.downlistheight)
         self.tempPic = Label(
             self.init_window_name, bg="white")
         self.tempPic.place(
-            x=self.homewidth+50, y=20+self.downlistheight+20, width=self.tempPicWidth, height=self.tempPicHeight)
+            x=self.homewidth+50, y=60+self.downlistheight+20, width=self.tempPicWidth, height=self.tempPicHeight)
 
         # self.switch_pages =
 
@@ -423,6 +436,12 @@ class MY_GUI():
             self.worksList.append(work)
         if self.searchthread.stopped() == False:
             self.init_window_name.after(3000, self.getworkslist)
+
+    def directdownload(self, event):
+        link = self.direct_download_entry.get()
+        print(link)
+        self.outer_push_tesk(link, "")(event)
+        self.direct_download_entry.delete(0, END)
 
     def beginsearch(self, event):
         self.search_entry_var = self.search_entry.get()
@@ -686,6 +705,11 @@ class MY_GUI():
 
     def refresh_downwork(self):
         self.ThreadsManage()
+        self.downlist_data_box.delete(0, END)
+        for item in self.tasklist:
+            name = item['name']
+            self.downlist_data_box.insert(END, name)
+        print("下载列表刷新")
         self.init_window_name.after(1000, self.refresh_downwork)
 
     def refresh_star(self, event):

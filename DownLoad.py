@@ -200,7 +200,7 @@ def reDownload(Links):
 
 
 def getImgLinks(baseurl, task, Name=''):
-    global Sum
+    # global Sum
     Links = task['links']
     get_proxy_()
     print("正在读取作品第1页及相关信息...")
@@ -212,16 +212,18 @@ def getImgLinks(baseurl, task, Name=''):
     Sum = getSum(html)
     Pages = int(math.ceil(Sum/40))
     if Name == '':
-        Name = getName()
+        Name = getName(html)
         Name = validateTitle(Name)
+        task['name'] = Name
 
     print("作品名:"+Name)
     # print("共"+str(Sum)+"张")
     # print("共"+str(Pages)+"页")
     try:
         os.makedirs(Name)
-        # print("创建文件夹成功!")
+        print("创建文件夹成功!")
     except:
+        print("创建文件夹失败!")
         pass
 
     templinks = getLinks(html)
@@ -252,7 +254,7 @@ def beginCatch(Links, Name):
 
 
 lastprogress = 0
-Sum = 0
+# Sum = 0
 PicSrcs = []
 finishednum = 0
 wrongPic = {}
