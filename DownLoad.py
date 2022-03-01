@@ -217,8 +217,6 @@ def getImgLinks(baseurl, task, Name=''):
         task['name'] = Name
 
     print("作品名:"+Name)
-    # print("共"+str(Sum)+"张")
-    # print("共"+str(Pages)+"页")
     try:
         os.makedirs(Name)
         print("创建文件夹成功!")
