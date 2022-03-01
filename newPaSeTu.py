@@ -463,65 +463,6 @@ class MY_GUI():
         # self.addallworks(url)
         pass
 
-    # def addallworks(self, url):
-    #     self.is_catching_more = True
-    #     html = ask5URL(url)
-    #     if html == '':
-    #         print("请求失败，链接：", url)
-    #     soup = bs4.BeautifulSoup(html, "html.parser")
-    #     for item in soup.find_all('table', class_="itg gltc"):
-    #         workslist = []
-    #         for item1 in item.find_all('tr')[1:]:
-    #             work = {}
-    #             for Type in item1.find_all('div', class_='cn ct2'):
-    #                 work['type'] = 'Doujinshi'
-    #             for Type in item1.find_all('div', class_='cn ct3'):
-    #                 work['type'] = 'Manga'
-    #             for Type in item1.find_all('div', class_='cn ct4'):
-    #                 work['type'] = 'Artist CG'
-    #             for Type in item1.find_all('div', class_='cn ct5'):
-    #                 work['type'] = 'Game CG'
-    #             for Type in item1.find_all('div', class_='cn cta'):
-    #                 work['type'] = 'Western'
-    #             for Type in item1.find_all('div', class_='cn ct9'):
-    #                 work['type'] = 'Non-H'
-    #             for Type in item1.find_all('div', class_='cn ct6'):
-    #                 work['type'] = 'Image Set'
-    #             for Type in item1.find_all('div', class_='cn ct7'):
-    #                 work['type'] = 'Cosplay'
-    #             for Type in item1.find_all('div', class_='cn ct8'):
-    #                 work['type'] = 'Asian Porn'
-    #             for Type in item1.find_all('div', class_='cn ct1'):
-    #                 work['type'] = 'Misc'
-    #             for Name in item1.find_all('div', class_='glink'):
-    #                 work['name'] = Name.string
-    #             for Page in item1.find_all('td', class_='gl4c glhide'):
-    #                 try:
-    #                     p = Page.find_all('div')
-    #                     work['page'] = int(p[1].string.split(' ')[0])
-    #                 except:
-    #                     pass
-    #             for Star in item1.find_all('div', class_='ir'):
-    #                 try:
-    #                     S = re.findall("\d+", Star.attrs['style'])[: 2]
-    #                     star = 5-int(S[0])/16-(int(S[1])-1)/40
-    #                     work['star'] = star
-    #                 except:
-    #                     work['star'] = 0.0
-    #             for Link in item1.find_all('td', class_='gl3c glname'):
-    #                 if Link.find('a').attrs.__contains__('href'):
-    #                     link = Link.find('a').attrs['href']
-    #                     work['link'] = link
-    #             for Imgsrc in item1.find_all('div', class_='glthumb'):
-    #                 for img in Imgsrc.find_all('img'):
-    #                     if img.attrs. __contains__('data-src'):
-    #                         work['imgsrc'] = img.attrs['data-src']
-    #                     elif img.attrs. __contains__('src'):
-    #                         work['imgsrc'] = img.attrs['src']
-    #                     if work != {}:
-    #                         workslist.append(work)
-    #         self.allworks += workslist
-
     def getpic(self,  imgheight, imgwidth, index, label):
         # print('in')
         try:
